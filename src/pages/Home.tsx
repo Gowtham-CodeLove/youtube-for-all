@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import {
   ArrowRight,
@@ -15,10 +15,12 @@ import {
   Layers,
   MonitorOff,
   Play,
+  Scissors,
   ShieldCheck,
   Smartphone,
   Sparkles,
   Users,
+  Wand2,
   Youtube,
   Zap,
 } from "lucide-react";
@@ -44,6 +46,65 @@ function initialTutorialLang(): TutorialLang {
     // storage blocked — fall through
   }
   return typeof navigator !== "undefined" && navigator.language?.toLowerCase().startsWith("ta") ? "ta" : "en";
+}
+
+/** Guide videos for the two studios built into UTubeFlow, on the CodeLove channel. */
+const TOOL_GUIDES = [
+  {
+    id: "vhU1lr_AF-o",
+    to: "/cut",
+    icon: Scissors,
+    name: "VideoCut",
+    title: "VideoCut guide: cut a long video into YouTube Shorts",
+    text: "Split a long video into Shorts or equal parts, trim it, add text and music — the clips land in Ready to Post.",
+  },
+  {
+    id: "z2Y0PRfS7KU",
+    to: "/maker",
+    icon: Wand2,
+    name: "Video Maker",
+    title: "Video Maker guide: turn a script into a talking cartoon video",
+    text: "Write a script and get a talking cartoon video with AI voices, lip sync and captions — ready to schedule.",
+  },
+] as const;
+
+function ToolGuides() {
+  const { user } = useAuth();
+  return (
+    <section id="tools" className="scroll-mt-20 border-b border-line py-24 sm:py-32">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <SectionTitle eyebrow="Built in" title={<>Make the videos <span className="grad-text">inside UTubeFlow</span></>}>
+          VideoCut and Video Maker are free studios right inside UTubeFlow. Watch how each one works.
+        </SectionTitle>
+        <div className="mt-14 grid gap-6 lg:grid-cols-2">
+          {TOOL_GUIDES.map(({ id, to, icon: Icon, name, title, text }) => (
+            <div key={id} className="reveal flex flex-col rounded-3xl border border-line bg-card p-2.5">
+              <iframe
+                className="block aspect-video w-full rounded-2xl bg-black"
+                src={`https://www.youtube.com/embed/${id}?rel=0`}
+                title={title}
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+              <div className="flex flex-1 flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+                <div className="min-w-0 flex-1">
+                  <h3 className="flex items-center gap-2 text-lg font-bold">
+                    <Icon className="size-5 text-accent" /> {name}
+                  </h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted">{text}</p>
+                </div>
+                <Link to={user ? to : "/login"} className="shrink-0">
+                  <Button variant="secondary" icon={<ArrowRight className="size-4" />}>Open {name}</Button>
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function PrimaryCta({ label = "Start free — no card" }: { label?: string }) {
@@ -105,8 +166,15 @@ function CreatorsRow() {
 
 // ---------- Hero visual ----------
 
+const noSubscribe = () => () => {};
+const serverLang = (): TutorialLang => "en";
+
 function HeroVisual() {
-  const [lang, setLang] = useState<TutorialLang>(initialTutorialLang);
+  // The saved/browser language, read so the pre-rendered page (built in English) hydrates cleanly and then
+  // switches to the visitor's language; a fresh render reads it straight away.
+  const savedLang = useSyncExternalStore(noSubscribe, initialTutorialLang, serverLang);
+  const [picked, setLang] = useState<TutorialLang | null>(null);
+  const lang = picked ?? savedLang;
   const video = TUTORIALS[lang];
   const pick = (l: TutorialLang) => {
     setLang(l);
@@ -386,6 +454,9 @@ export default function Home() {
         </div>
         <CreatorsRow />
       </section>
+
+      {/* ---------- VideoCut + Video Maker guides ---------- */}
+      <ToolGuides />
 
       {/* ---------- Features (bento) ---------- */}
       <section id="features" className="scroll-mt-20 py-24 sm:py-32">
