@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import {
   BookOpen,
@@ -79,8 +79,15 @@ export function Logo({ className }: { className?: string }) {
   );
 }
 
+// The theme lives on <html data-theme> (set before first paint in index.html). Read through
+// useSyncExternalStore so the pre-rendered home page (no document at build time) hydrates without a mismatch.
+const noSubscribe = () => () => {};
+const readDomTheme = () => document.documentElement.dataset.theme ?? "";
+
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<string>(() => document.documentElement.dataset.theme ?? "");
+  const domTheme = useSyncExternalStore(noSubscribe, readDomTheme, () => "");
+  const [picked, setTheme] = useState<string | null>(null);
+  const theme = picked ?? domTheme;
   // White is the default; dark only when the user picked it.
   const isDark = theme === "dark";
   const flip = () => {

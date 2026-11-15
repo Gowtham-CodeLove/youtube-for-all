@@ -10,6 +10,19 @@ const seo = JSON.parse(readFileSync("src/seo-pages.json", "utf8"));
 const template = readFileSync("dist/index.html", "utf8");
 const lastmod = new Date().toISOString();
 
+// The home page, rendered to HTML by dist-ssr/prerender.js (src/prerender.tsx): visitors see the real page
+// before the JS arrives, and src/main.tsx hydrates it. If rendering fails, the home page keeps the boot spinner.
+let homeHtml = null;
+try {
+  const { renderHome } = await import("../dist-ssr/prerender.js");
+  homeHtml = renderHome();
+} catch (e) {
+  console.warn(`spa-fallback: home pre-render skipped (${String(e?.message ?? e).split("\n")[0]})`);
+}
+const ROOT_RE = /<div id="root">[\s\S]*?<!--seo:end--><\/div>/;
+// Same as src/lib/useReveal.ts, run before React loads so the scroll-in sections of the pre-rendered page appear.
+const REVEAL_SCRIPT = `<script>(function(){var els=document.querySelectorAll("#root .reveal:not(.in)");if(!("IntersectionObserver" in window)){els.forEach(function(e){e.classList.add("in")});return}var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add("in");io.unobserve(e.target)}})},{threshold:0.12,rootMargin:"0px 0px -40px 0px"});els.forEach(function(e){io.observe(e)})})();</script>`;
+
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function setMeta(html, attr, key, value) {
@@ -18,24 +31,32 @@ function setMeta(html, attr, key, value) {
   return html.replace(re, `$1${esc(value)}$2`);
 }
 
-function seoBlock(page) {
+// withH1 false: the pre-rendered home page already has its own <h1>, and this copy sits next to it as a <div>.
+function seoBlock(page, withH1 = true) {
   const links = Object.entries(seo.public)
     .map(([path, p]) => `<a href="${path}">${esc(p.h1.split(" — ")[0])}</a>`)
     .join(" · ");
-  return `<main class="seo-copy" style="max-width:720px;margin:0 auto;padding:96px 16px;font-family:Inter,system-ui,sans-serif;color:#9fb3ab">
-      <h1>${esc(page.h1)}</h1>
+  const tag = withH1 ? "main" : "div";
+  return `<${tag} class="seo-copy" style="max-width:720px;margin:0 auto;padding:96px 16px;font-family:Inter,system-ui,sans-serif;color:#9fb3ab">
+      ${withH1 ? `<h1>${esc(page.h1)}</h1>` : ""}
       <p>${esc(page.body)}</p>
       ${(page.more ?? []).map((s) => `<h2>${esc(s.h2)}</h2>\n      <p>${esc(s.p)}</p>`).join("\n      ")}
       <p>${links} · <a href="https://codelove.in">CodeLove</a> · <a href="https://videocut.codelove.in">Video Cut</a> · <a href="https://gowtham.codelove.in">Gowtham</a></p>
-    </main>`;
+    </${tag}>`;
 }
 
 function render(path, page) {
   const url = seo.site + path;
   let html = template
     .replace(/<title>[^<]*<\/title>/, `<title>${esc(page.title)}</title>`)
-    .replace(/(<link rel="canonical" href=")[^"]*(")/, `$1${url}$2`)
-    .replace(/<!--seo:start-->[\s\S]*?<!--seo:end-->/, seoBlock(page));
+    .replace(/(<link rel="canonical" href=")[^"]*(")/, `$1${url}$2`);
+  if (path === "/" && homeHtml && ROOT_RE.test(html)) {
+    // Function replacements: the rendered HTML may contain "$" sequences that a replacement string would expand.
+    html = html.replace(ROOT_RE, () => `<div id="root" data-prerendered="home">${homeHtml}</div>\n    ${seoBlock(page, false)}\n    ${REVEAL_SCRIPT}`);
+  } else {
+    if (path === "/" && homeHtml) console.warn("spa-fallback: #root markup not found in dist/index.html, home page not pre-rendered");
+    html = html.replace(/<!--seo:start-->[\s\S]*?<!--seo:end-->/, () => seoBlock(page));
+  }
   html = setMeta(html, "name", "description", page.description);
   html = setMeta(html, "property", "og:title", page.title);
   html = setMeta(html, "property", "og:description", page.description);
