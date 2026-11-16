@@ -17,6 +17,8 @@ import {
   Menu,
   Crown,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Scissors,
   Wand2,
   Settings as SettingsIcon,
@@ -331,20 +333,42 @@ export default function Layout() {
     window.scrollTo(0, 0);
   }, [loc.pathname]);
   const current = ALL.find((n) => loc.pathname.startsWith(n.to));
+  // Desktop sidebar: full, or folded to icons only (remembered on this device).
+  const [mini, setMini] = useState(() => {
+    try {
+      return localStorage.getItem("utubeflow.sidebar.mini") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleMini = () =>
+    setMini((m) => {
+      try {
+        localStorage.setItem("utubeflow.sidebar.mini", m ? "0" : "1");
+      } catch {}
+      return !m;
+    });
 
-  const navGroups = (groups: typeof GROUPS) => (
+  const navGroups = (groups: typeof GROUPS, folded = false) => (
     <nav className="space-y-3.5">
       {groups.map((g) => (
         <div key={g.title}>
-          <div className="mb-1 px-3 text-[10px] font-semibold tracking-wider text-faint uppercase">{g.title}</div>
+          {folded ? (
+            <div className="mx-auto mb-1.5 h-px w-6 bg-line" aria-hidden="true" />
+          ) : (
+            <div className="mb-1 px-3 text-[10px] font-semibold tracking-wider text-faint uppercase">{g.title}</div>
+          )}
           <div className="space-y-0.5">
             {g.items.map(({ to, label, icon: Icon, badge }) => (
               <NavLink
                 key={to}
                 to={to}
+                title={folded ? label : undefined}
+                aria-label={folded ? label : undefined}
                 className={({ isActive }) =>
                   cx(
-                    "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition",
+                    "group relative flex items-center gap-3 rounded-xl py-2 text-sm font-medium transition",
+                    folded ? "justify-center px-0" : "px-3",
                     to === "/admin"
                       ? cx("border border-amber-400/30 bg-gradient-to-r from-amber-400/15 to-fuchsia-500/10 text-amber-400", isActive ? "from-amber-400/25 to-fuchsia-500/20 text-fg" : "hover:from-amber-400/25")
                       : isActive
@@ -356,9 +380,14 @@ export default function Layout() {
                 {({ isActive }) => (
                   <>
                     {isActive && <span className="grad-bg absolute top-2 bottom-2 left-0 w-1 rounded-r-full" />}
-                    <Icon className={cx("size-4.5", isActive && "text-accent")} />
-                    <span className="flex-1">{label}</span>
-                    {badge && countFor(to) > 0 && <span className="grad-bg rounded-full px-2 py-0.5 text-[11px] font-semibold text-on-accent">{countFor(to)}</span>}
+                    <Icon className={cx("size-4.5 shrink-0", isActive && "text-accent")} />
+                    {!folded && <span className="flex-1">{label}</span>}
+                    {badge && countFor(to) > 0 &&
+                      (folded ? (
+                        <span className="grad-bg absolute top-1 right-1.5 min-w-4 rounded-full px-1 text-center text-[9px] leading-4 font-semibold text-on-accent">{countFor(to)}</span>
+                      ) : (
+                        <span className="grad-bg rounded-full px-2 py-0.5 text-[11px] font-semibold text-on-accent">{countFor(to)}</span>
+                      ))}
                   </>
                 )}
               </NavLink>
@@ -369,39 +398,62 @@ export default function Layout() {
     </nav>
   );
 
-  const sidebar = (
+  const autopilotNote = autopilot.running ? "Running · PC can be off" : autopilot.config ? "Not active — fix it" : "Off — set it up";
+  /** `folded`: the desktop sidebar folded to icons; `toggle`: show the fold / unfold button (desktop only). */
+  const sidebarFor = (folded: boolean, toggle: boolean) => (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <Link to="/dashboard">
-          <Logo className="mb-5 px-2 pt-1" />
-        </Link>
-        {navGroups(GROUPS)}
+        <div className={cx("mb-5 flex items-center gap-1 pt-1", folded ? "flex-col gap-3" : "justify-between pr-0.5")}>
+          <Link to="/dashboard" title={folded ? APP_NAME : undefined} className="min-w-0">
+            {folded ? <img src="favicon.svg" alt={APP_NAME} className="size-9 rounded-xl" /> : <Logo className="px-2" />}
+          </Link>
+          {toggle && (
+            <button
+              onClick={toggleMini}
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-card-hover hover:text-fg"
+              title={folded ? "Expand the sidebar" : "Collapse the sidebar"}
+              aria-label={folded ? "Expand the sidebar" : "Collapse the sidebar"}
+              aria-expanded={!folded}
+            >
+              {folded ? <PanelLeftOpen className="size-4.5" /> : <PanelLeftClose className="size-4.5" />}
+            </button>
+          )}
+        </div>
+        {navGroups(GROUPS, folded)}
       </div>
       {/* Owner tools sit at the bottom, just above the Autopilot card. */}
       <div className="space-y-3 pt-3">
-        {isAdminUser(user) && navGroups([ADMIN_GROUP])}
+        {isAdminUser(user) && navGroups([ADMIN_GROUP], folded)}
         <Link
           to="/settings#autopilot"
-          className={cx("flex items-center gap-3 rounded-xl border p-3 transition", autopilot.running ? "border-ok/25 bg-ok/5" : "border-line bg-card hover:border-accent/40")}
+          title={folded ? `Autopilot — ${autopilotNote}` : undefined}
+          className={cx(
+            "flex items-center gap-3 rounded-xl border transition",
+            folded ? "justify-center p-1.5" : "p-3",
+            autopilot.running ? "border-ok/25 bg-ok/5" : "border-line bg-card hover:border-accent/40",
+          )}
         >
-          <span className={cx("grid size-8 place-items-center rounded-lg", autopilot.running ? "bg-ok/15 text-ok" : "bg-bg-soft text-muted")}>
+          <span className={cx("grid size-8 shrink-0 place-items-center rounded-lg", autopilot.running ? "bg-ok/15 text-ok" : "bg-bg-soft text-muted")}>
             <Bot className="size-4.5" />
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-semibold">Autopilot</span>
-            <span className={cx("block text-[11px]", autopilot.running ? "text-ok" : "text-muted")}>
-              {autopilot.running ? "Running · PC can be off" : autopilot.config ? "Not active — fix it" : "Off — set it up"}
+          {!folded && (
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold">Autopilot</span>
+              <span className={cx("block text-[11px]", autopilot.running ? "text-ok" : "text-muted")}>{autopilotNote}</span>
             </span>
-          </span>
+          )}
         </Link>
       </div>
     </>
   );
+  const sidebar = sidebarFor(false, false);
 
   return (
-    <div className="min-h-dvh bg-bg-soft lg:pl-68">
+    <div className={cx("min-h-dvh bg-bg-soft transition-[padding] duration-200", mini ? "lg:pl-18" : "lg:pl-68")}>
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-68 flex-col border-r border-line bg-card p-4 lg:flex">{sidebar}</aside>
+      <aside className={cx("fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-card transition-[width] duration-200 lg:flex", mini ? "w-18 px-2.5 py-4" : "w-68 p-4")}>
+        {sidebarFor(mini, true)}
+      </aside>
 
       {/* Top bar (fixed on every screen size) */}
       <header className="glass sticky top-0 z-30 border-b border-line">

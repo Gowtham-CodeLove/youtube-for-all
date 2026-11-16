@@ -114,7 +114,8 @@ export function StudioFrame({ partner }: { partner: StudioPartner }) {
     [navigate, settings.defaults, toast, user.uid],
   );
 
-  const src = partner.src;
+  // The theme goes in the address too, so the tool opens in it without a light flash (later switches go by message).
+  const [src] = useState(() => `${partner.src}${partner.src.includes("?") ? "&" : "?"}theme=${currentTheme()}`);
 
   const sendInit = useCallback(() => {
     const payload = { type: "utubeflow:init", kind: "auto", theme: currentTheme() };
@@ -172,9 +173,27 @@ export function StudioFrame({ partner }: { partner: StudioPartner }) {
     return () => window.removeEventListener("message", onMessage);
   }, [saveToReady, partner]);
 
+  // The tool fills the screen like an app: this page itself never scrolls. A scroll that runs past the end
+  // of a panel inside the frame (or a field coming into view) would otherwise drag the page up and leave a
+  // bare strip under the tool.
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.style.overflow;
+    root.style.overflow = "hidden";
+    const pin = () => {
+      if (window.scrollY !== 0) window.scrollTo({ top: 0, behavior: "instant" });
+    };
+    pin();
+    window.addEventListener("scroll", pin, { passive: true });
+    return () => {
+      root.style.overflow = before;
+      window.removeEventListener("scroll", pin);
+    };
+  }, []);
+
   return (
-    // Full height under the top bar; on phones the bottom tab bar takes 4rem more.
-    <div className="relative h-[calc(100dvh-8rem)] w-full lg:h-[calc(100dvh-4rem)]">
+    // Full height under the top bar (4rem + its 1px border); on phones the bottom tab bar takes 4rem more.
+    <div className="relative h-[calc(100dvh-8rem-1px)] w-full lg:h-[calc(100dvh-4rem-1px)]">
       {!ready && (
         <div className="absolute inset-0 z-10 grid place-items-center bg-bg-soft p-6">
           <div className="flex flex-col items-center gap-3 text-sm text-muted">
