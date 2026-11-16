@@ -349,15 +349,16 @@ export default function Layout() {
       return !m;
     });
 
+  // Folding only fades labels and shrinks the width: icons never move, so the animation stays smooth.
+  const fade = (folded: boolean) => cx("whitespace-nowrap transition-opacity duration-200", folded ? "pointer-events-none opacity-0" : "opacity-100 delay-75");
   const navGroups = (groups: typeof GROUPS, folded = false) => (
     <nav className="space-y-3.5">
       {groups.map((g) => (
         <div key={g.title}>
-          {folded ? (
-            <div className="mx-auto mb-1.5 h-px w-6 bg-line" aria-hidden="true" />
-          ) : (
-            <div className="mb-1 px-3 text-[10px] font-semibold tracking-wider text-faint uppercase">{g.title}</div>
-          )}
+          <div className="relative mb-1 h-4">
+            <div className={cx("absolute inset-0 px-[15px] text-[10px] leading-4 font-semibold tracking-wider text-faint uppercase", fade(folded))}>{g.title}</div>
+            <div className={cx("absolute top-2 left-3 h-px w-6 bg-line transition-opacity duration-200", folded ? "opacity-100" : "opacity-0")} aria-hidden="true" />
+          </div>
           <div className="space-y-0.5">
             {g.items.map(({ to, label, icon: Icon, badge }) => (
               <NavLink
@@ -367,8 +368,7 @@ export default function Layout() {
                 aria-label={folded ? label : undefined}
                 className={({ isActive }) =>
                   cx(
-                    "group relative flex items-center gap-3 rounded-xl py-2 text-sm font-medium transition",
-                    folded ? "justify-center px-0" : "px-3",
+                    "group relative flex items-center gap-3 overflow-hidden rounded-xl px-[15px] py-2 text-sm font-medium transition",
                     to === "/admin"
                       ? cx("border border-amber-400/30 bg-gradient-to-r from-amber-400/15 to-fuchsia-500/10 text-amber-400", isActive ? "from-amber-400/25 to-fuchsia-500/20 text-fg" : "hover:from-amber-400/25")
                       : isActive
@@ -381,13 +381,17 @@ export default function Layout() {
                   <>
                     {isActive && <span className="grad-bg absolute top-2 bottom-2 left-0 w-1 rounded-r-full" />}
                     <Icon className={cx("size-4.5 shrink-0", isActive && "text-accent")} />
-                    {!folded && <span className="flex-1">{label}</span>}
-                    {badge && countFor(to) > 0 &&
-                      (folded ? (
-                        <span className="grad-bg absolute top-1 right-1.5 min-w-4 rounded-full px-1 text-center text-[9px] leading-4 font-semibold text-on-accent">{countFor(to)}</span>
-                      ) : (
-                        <span className="grad-bg rounded-full px-2 py-0.5 text-[11px] font-semibold text-on-accent">{countFor(to)}</span>
-                      ))}
+                    <span className={cx("flex-1", fade(folded))}>{label}</span>
+                    {badge && countFor(to) > 0 && (
+                      <span
+                        className={cx(
+                          "grad-bg rounded-full text-center font-semibold text-on-accent transition-all duration-200",
+                          folded ? "absolute top-1 left-7 min-w-4 px-1 text-[9px] leading-4" : "px-2 py-0.5 text-[11px]",
+                        )}
+                      >
+                        {countFor(to)}
+                      </span>
+                    )}
                   </>
                 )}
               </NavLink>
@@ -402,46 +406,45 @@ export default function Layout() {
   /** `folded`: the desktop sidebar folded to icons; `toggle`: show the fold / unfold button (desktop only). */
   const sidebarFor = (folded: boolean, toggle: boolean) => (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className={cx("mb-5 flex items-center gap-1 pt-1", folded ? "flex-col gap-3" : "justify-between pr-0.5")}>
-          <Link to="/dashboard" title={folded ? APP_NAME : undefined} className="min-w-0">
-            {folded ? <img src="favicon.svg" alt={APP_NAME} className="size-9 rounded-xl" /> : <Logo className="px-2" />}
-          </Link>
-          {toggle && (
-            <button
-              onClick={toggleMini}
-              className="grid size-8 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-card-hover hover:text-fg"
-              title={folded ? "Expand the sidebar" : "Collapse the sidebar"}
-              aria-label={folded ? "Expand the sidebar" : "Collapse the sidebar"}
-              aria-expanded={!folded}
-            >
-              {folded ? <PanelLeftOpen className="size-4.5" /> : <PanelLeftClose className="size-4.5" />}
-            </button>
-          )}
-        </div>
+      {toggle && (
+        // Sits on the sidebar's right edge, so it is in the same place whether the sidebar is open or folded.
+        <button
+          onClick={toggleMini}
+          className="absolute top-6 -right-3.5 z-10 grid size-7 place-items-center rounded-full border border-line bg-card text-muted shadow-md transition hover:border-accent/50 hover:text-accent"
+          title={folded ? "Expand the sidebar" : "Collapse the sidebar"}
+          aria-label={folded ? "Expand the sidebar" : "Collapse the sidebar"}
+          aria-expanded={!folded}
+        >
+          {folded ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
+        </button>
+      )}
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <Link to="/dashboard" title={folded ? APP_NAME : undefined} className="mb-5 flex items-center gap-2.5 px-1.5 pt-1">
+          <img src="favicon.svg" alt="" width={36} height={36} className="size-9 shrink-0 rounded-xl shadow-lg shadow-accent/30" />
+          <span className={cx("text-lg font-extrabold tracking-tight", fade(folded))} aria-label={APP_NAME}>
+            UTube<span className="grad-text">Flow</span>
+          </span>
+        </Link>
         {navGroups(GROUPS, folded)}
       </div>
       {/* Owner tools sit at the bottom, just above the Autopilot card. */}
-      <div className="space-y-3 pt-3">
+      <div className="space-y-3 overflow-hidden pt-3">
         {isAdminUser(user) && navGroups([ADMIN_GROUP], folded)}
         <Link
           to="/settings#autopilot"
           title={folded ? `Autopilot — ${autopilotNote}` : undefined}
           className={cx(
-            "flex items-center gap-3 rounded-xl border transition",
-            folded ? "justify-center p-1.5" : "p-3",
+            "flex items-center gap-3 overflow-hidden rounded-xl border px-[7px] py-2.5 transition",
             autopilot.running ? "border-ok/25 bg-ok/5" : "border-line bg-card hover:border-accent/40",
           )}
         >
           <span className={cx("grid size-8 shrink-0 place-items-center rounded-lg", autopilot.running ? "bg-ok/15 text-ok" : "bg-bg-soft text-muted")}>
             <Bot className="size-4.5" />
           </span>
-          {!folded && (
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-semibold">Autopilot</span>
-              <span className={cx("block text-[11px]", autopilot.running ? "text-ok" : "text-muted")}>{autopilotNote}</span>
-            </span>
-          )}
+          <span className={cx("min-w-0 flex-1", fade(folded))}>
+            <span className="block text-xs font-semibold">Autopilot</span>
+            <span className={cx("block text-[11px]", autopilot.running ? "text-ok" : "text-muted")}>{autopilotNote}</span>
+          </span>
         </Link>
       </div>
     </>
@@ -449,9 +452,9 @@ export default function Layout() {
   const sidebar = sidebarFor(false, false);
 
   return (
-    <div className={cx("min-h-dvh bg-bg-soft transition-[padding] duration-200", mini ? "lg:pl-18" : "lg:pl-68")}>
-      {/* Desktop sidebar */}
-      <aside className={cx("fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-card transition-[width] duration-200 lg:flex", mini ? "w-18 px-2.5 py-4" : "w-68 p-4")}>
+    <div className={cx("min-h-dvh bg-bg-soft transition-[padding] duration-300 ease-[cubic-bezier(.2,.8,.2,1)]", mini ? "lg:pl-18" : "lg:pl-68")}>
+      {/* Desktop sidebar: fixed padding, only the width animates. */}
+      <aside className={cx("fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-card px-3 py-4 transition-[width] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] lg:flex", mini ? "w-18" : "w-68")}>
         {sidebarFor(mini, true)}
       </aside>
 
