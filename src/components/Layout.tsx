@@ -403,21 +403,9 @@ export default function Layout() {
   );
 
   const autopilotNote = autopilot.running ? "Running · PC can be off" : autopilot.config ? "Not active — fix it" : "Off — set it up";
-  /** `folded`: the desktop sidebar folded to icons; `toggle`: show the fold / unfold button (desktop only). */
-  const sidebarFor = (folded: boolean, toggle: boolean) => (
+  /** `folded`: the desktop sidebar folded to icons (the fold button lives in the top bar). */
+  const sidebarFor = (folded: boolean) => (
     <>
-      {toggle && (
-        // Sits on the sidebar's right edge, so it is in the same place whether the sidebar is open or folded.
-        <button
-          onClick={toggleMini}
-          className="absolute top-6 -right-3.5 z-10 grid size-7 place-items-center rounded-full border border-line bg-card text-muted shadow-md transition hover:border-accent/50 hover:text-accent"
-          title={folded ? "Expand the sidebar" : "Collapse the sidebar"}
-          aria-label={folded ? "Expand the sidebar" : "Collapse the sidebar"}
-          aria-expanded={!folded}
-        >
-          {folded ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
-        </button>
-      )}
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Link to="/dashboard" title={folded ? APP_NAME : undefined} className="mb-5 flex items-center gap-2.5 px-1.5 pt-1">
           <img src="favicon.svg" alt="" width={36} height={36} className="size-9 shrink-0 rounded-xl shadow-lg shadow-accent/30" />
@@ -449,19 +437,28 @@ export default function Layout() {
       </div>
     </>
   );
-  const sidebar = sidebarFor(false, false);
+  const sidebar = sidebarFor(false);
 
   return (
     <div className={cx("min-h-dvh bg-bg-soft transition-[padding] duration-300 ease-[cubic-bezier(.2,.8,.2,1)]", mini ? "lg:pl-18" : "lg:pl-68")}>
       {/* Desktop sidebar: fixed padding, only the width animates. */}
       <aside className={cx("fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-card px-3 py-4 transition-[width] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] lg:flex", mini ? "w-18" : "w-68")}>
-        {sidebarFor(mini, true)}
+        {sidebarFor(mini)}
       </aside>
 
-      {/* Top bar (fixed on every screen size) */}
+      {/* Top bar (fixed on every screen size): starts right after the sidebar, fold button first. */}
       <header className="glass sticky top-0 z-30 border-b border-line">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-10">
+        <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-4">
           <div className="flex min-w-0 items-center gap-3">
+            <button
+              onClick={toggleMini}
+              className="hidden size-9 shrink-0 place-items-center rounded-xl border border-line text-muted transition hover:border-accent/40 hover:bg-card-hover hover:text-fg lg:grid"
+              title={mini ? "Expand the sidebar" : "Collapse the sidebar"}
+              aria-label={mini ? "Expand the sidebar" : "Collapse the sidebar"}
+              aria-expanded={!mini}
+            >
+              {mini ? <PanelLeftOpen className="size-4.5" /> : <PanelLeftClose className="size-4.5" />}
+            </button>
             <Link to="/dashboard" className="lg:hidden">
               <img src="favicon.svg" alt={APP_NAME} className="size-9 rounded-xl" />
             </Link>
