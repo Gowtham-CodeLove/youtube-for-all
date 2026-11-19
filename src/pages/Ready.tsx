@@ -1,9 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
   CheckSquare,
   Clapperboard,
+  Combine,
   ListVideo,
+  Palette,
+  RotateCcw,
   Save,
   Scissors,
   Send,
@@ -12,11 +15,18 @@ import {
   Square,
   Trash2,
   Video,
+  Wand2,
 } from "lucide-react";
 import { useUser } from "../lib/auth";
 import { useSettings } from "../lib/settings";
 import { patchItem, removeItem, useItems, type Item } from "../lib/items";
 import { getMemoryFile } from "../lib/uploads";
+import { clipInfo, getClip, putClip, useClipsVersion } from "../lib/clip-store";
+import { readSavedLook, readTarget } from "../lib/studio-prefs";
+import { SHAPE_SIZE } from "../lib/clip-look";
+import { RenderError, renderEdit } from "../lib/clip-render";
+import { ClipStudio } from "../components/studio/ClipStudio";
+import { fmtTime } from "../components/studio/Timeline";
 import { nextFreeSlots, fmtBytes, fmtDateTime, toLocalInput, fromLocalInput } from "../lib/schedule";
 import { parseTags } from "../lib/meta";
 import {
@@ -31,18 +41,40 @@ import {
   useToast,
 } from "../components/ui";
 
+/** Length of a clip kept in this browser, read once from its file. */
+function useDuration(blob: Blob | undefined, known?: number | null) {
+  const [d, setD] = useState<number | null>(known ?? null);
+  useEffect(() => {
+    if (!blob) return;
+    let live = true;
+    clipInfo(blob).then((i) => live && i && setD(i.durationSec));
+    return () => {
+      live = false;
+    };
+  }, [blob]);
+  return d;
+}
+
+function useObjectUrl(blob: Blob | null | undefined) {
+  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
+  useEffect(() => () => void (url && URL.revokeObjectURL(url)), [url]);
+  return url;
+}
+
 function ReadyCard({
   item,
   selected,
   onToggleSelect,
   onPostSingle,
   onDelete,
+  onEdit,
 }: {
   item: Item;
   selected: boolean;
   onToggleSelect: () => void;
   onPostSingle: (item: Item) => void;
   onDelete: (item: Item) => void;
+  onEdit: (item: Item) => void;
 }) {
   const user = useUser();
   const toast = useToast();
@@ -55,17 +87,22 @@ function ReadyCard({
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const mem = getMemoryFile(item.id);
-  const videoUrl = useMemo(() => {
-    if (mem?.video) return URL.createObjectURL(mem.video);
-    return null;
-  }, [mem]);
-
-  const thumbUrl = useMemo(() => {
-    if (mem?.thumb) return URL.createObjectURL(mem.thumb);
-    return null;
-  }, [mem]);
+  const videoUrl = useObjectUrl(mem?.video);
+  const thumbUrl = useObjectUrl(mem?.thumb);
+  const duration = useDuration(mem?.video, item.durationSec);
+  const original = getClip(item.id)?.original ?? null;
 
   const isShort = item.kind === "short";
+  const limit = readTarget(item.kind);
+  const over = duration !== null && limit !== null && duration > limit + 0.05 ? duration - limit : 0;
+
+  const restore = async () => {
+    if (!original || !confirm("Go back to the clip as it first arrived? The edited version will be replaced.")) return;
+    putClip(item.id, { video: original, thumb: null, original: null });
+    const info = await clipInfo(original);
+    await patchItem(user.uid, item.id, { durationSec: info?.durationSec ?? null, file: item.file ? { ...item.file, size: original.size } : item.file }).catch(() => {});
+    toast("ok", "Original clip restored.");
+  };
   const hasChanges = title !== item.title || description !== item.description || tags !== item.tags.join(", ") || (customTime ? fromLocalInput(customTime) !== item.publishAt : false);
 
   const handleSave = async () => {
@@ -124,8 +161,20 @@ function ReadyCard({
               )}
 
               <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur text-[11px] font-mono font-medium text-white shadow">
-                {isShort ? "9:16 Short" : "Video"}
+                {isShort ? "Short" : "Video"}
+                {duration !== null && ` · ${fmtTime(duration)}`}
               </span>
+
+              {over > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(item)}
+                  title="Open in Clip Studio to trim or split the extra"
+                  className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-danger text-[11px] font-semibold text-white shadow hover:brightness-110"
+                >
+                  +{Math.ceil(over)}s over {fmtTime(limit!, false)}
+                </button>
+              )}
 
               {item.file?.size ? (
                 <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur text-[10px] font-mono text-zinc-300">
@@ -148,6 +197,17 @@ function ReadyCard({
               {selected ? <CheckSquare className="size-4" /> : <Square className="size-4" />}
               <span>{selected ? "Selected" : "Select video"}</span>
             </button>
+
+            {mem?.video && (
+              <Button size="sm" variant="primary" className="w-full" icon={<Wand2 className="size-3.5" />} onClick={() => onEdit(item)}>
+                Edit in Clip Studio
+              </Button>
+            )}
+            {original && (
+              <button type="button" onClick={restore} className="inline-flex w-full items-center justify-center gap-1.5 text-[11px] font-medium text-muted hover:text-fg">
+                <RotateCcw className="size-3" /> Restore original
+              </button>
+            )}
           </div>
 
           {/* Right: Inline Title, Description, and Tags Editor */}
@@ -274,6 +334,11 @@ export default function ReadyPage() {
   const { items } = useItems(user.uid);
   const toast = useToast();
   const navigate = useNavigate();
+  // Clip files live in this browser (IndexedDB); re-render when they load or change.
+  useClipsVersion();
+  const [studioIds, setStudioIds] = useState<string[] | null>(null);
+  const [batch, setBatch] = useState<{ done: number; total: number; share: number; title: string } | null>(null);
+  const [batchCtrl, setBatchCtrl] = useState<AbortController | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -396,6 +461,62 @@ export default function ReadyPage() {
     }
   };
 
+  // Join: the selected clips, in list order, open together in the Clip Studio.
+  const joinSelected = () => {
+    const ids = readyItems.filter((i) => selectedIds.has(i.id) && getClip(i.id)).map((i) => i.id);
+    if (ids.length < 2) return toast("error", "Select at least two clips (kept in this browser) to join.");
+    setStudioIds(ids);
+  };
+
+  // The look saved in the Clip Studio (frame, text, voice) put on every selected clip, one after another.
+  const applySavedLook = async () => {
+    const look = readSavedLook();
+    if (!look) return toast("error", "No saved look yet. Open a clip in Clip Studio, set the frame / text / voice, and press “Save look”.");
+    const targets = readyItems.filter((i) => selectedIds.has(i.id) && getClip(i.id));
+    if (!targets.length) return toast("error", "Select the clips to apply the look to.");
+    if (!confirm(`Put the saved look (${look.shape} frame, ${look.texts.length} text box${look.texts.length === 1 ? "" : "es"}, voice ${look.voice.pitch === 1 ? "normal" : "changed"}) on ${targets.length} clip${targets.length > 1 ? "s" : ""}? The first version of each is kept for “Restore original”.`)) return;
+    const ctrl = new AbortController();
+    setBatchCtrl(ctrl);
+    let ok = 0;
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        const item = targets[i];
+        const files = getClip(item.id)!;
+        setBatch({ done: i, total: targets.length, share: 0, title: item.title });
+        const info = await clipInfo(files.video);
+        if (!info) continue;
+        const size = SHAPE_SIZE[look.shape];
+        const res = await renderEdit(
+          {
+            segments: [{ source: files.video, start: 0, end: info.durationSec }],
+            width: size.width,
+            height: size.height,
+            framing: look.framing,
+            texts: look.texts,
+            vars: { n: i + 1, total: targets.length, title: item.title },
+            voice: look.voice,
+          },
+          (share) => setBatch({ done: i, total: targets.length, share, title: item.title }),
+          ctrl.signal,
+        );
+        putClip(item.id, { video: res.video, thumb: res.thumb, original: files.original ?? files.video });
+        patchItem(user.uid, item.id, {
+          durationSec: res.durationSec,
+          kind: look.shape === "16:9" || res.durationSec > 180 ? "video" : "short",
+          file: item.file ? { ...item.file, size: res.video.size, type: "video/mp4" } : item.file,
+        }).catch(() => {});
+        ok++;
+      }
+      toast("ok", `Look applied to ${ok} clip${ok === 1 ? "" : "s"}.`);
+    } catch (e) {
+      if (ctrl.signal.aborted) toast("info", `Stopped after ${ok} clip${ok === 1 ? "" : "s"}.`);
+      else toast("error", e instanceof RenderError ? e.message : (e as Error).message);
+    } finally {
+      setBatch(null);
+      setBatchCtrl(null);
+    }
+  };
+
   // Bulk Apply Template
   const applyTemplate = async () => {
     const targets = readyItems.filter((i) => (selectedCount > 0 ? selectedIds.has(i.id) : true));
@@ -440,7 +561,7 @@ export default function ReadyPage() {
     <div className="space-y-6">
       <PageHeader
         title="Ready to Post"
-        subtitle="Review, edit titles & descriptions, and send your cut videos to the scheduled queue."
+        subtitle="Trim, split, join, add text, frame and voice in Clip Studio — then send your clips to the scheduled queue."
         action={
           <div className="flex items-center gap-2">
             <Link to="/cut">
@@ -487,6 +608,18 @@ export default function ReadyPage() {
               >
                 Batch Template
               </Button>
+
+              {selectedCount > 0 && (
+                <Button size="sm" variant="secondary" icon={<Palette className="size-3.5" />} disabled={busy || !!batch} onClick={applySavedLook} title="Frame, text and voice saved in Clip Studio, on every selected clip">
+                  Apply saved look ({selectedCount})
+                </Button>
+              )}
+
+              {selectedCount > 1 && (
+                <Button size="sm" variant="secondary" icon={<Combine className="size-3.5" />} disabled={busy || !!batch} onClick={joinSelected} title="Open the selected clips together in Clip Studio and join them">
+                  Join ({selectedCount})
+                </Button>
+              )}
 
               {selectedCount > 0 && (
                 <Button
@@ -597,8 +730,40 @@ export default function ReadyPage() {
               onToggleSelect={() => toggleSelect(item.id)}
               onPostSingle={postSingleToQueue}
               onDelete={deleteItem}
+              onEdit={(it) => setStudioIds([it.id])}
             />
           ))}
+        </div>
+      )}
+
+      {studioIds && (
+        <ClipStudio
+          items={items}
+          itemIds={studioIds}
+          onClose={(message) => {
+            setStudioIds(null);
+            if (message) {
+              toast("ok", message);
+              setSelectedIds(new Set());
+            }
+          }}
+        />
+      )}
+
+      {batch && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-bg/80 p-6 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-line bg-card p-6 text-center shadow-2xl">
+            <Spinner className="mx-auto size-7" />
+            <div className="mt-3 font-semibold">Applying the look · {batch.done + 1} of {batch.total}</div>
+            <div className="mt-1 truncate text-sm text-muted">{batch.title}</div>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-bg-soft">
+              <div className="grad-bg h-full rounded-full transition-all" style={{ width: `${Math.max(3, ((batch.done + batch.share) / batch.total) * 100)}%` }} />
+            </div>
+            <p className="mt-3 text-xs text-faint">Keep this tab open — the videos are made on your computer.</p>
+            <Button size="sm" variant="ghost" className="mt-3" onClick={() => batchCtrl?.abort()}>
+              Stop
+            </Button>
+          </div>
         </div>
       )}
     </div>

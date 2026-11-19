@@ -15,6 +15,7 @@ import { patchItem, saveItem, type Item } from "./items";
 import { clearStoredToken, setThumbnail, uploadVideo, YouTubeError } from "./youtube";
 import { downloadFromDrive, trashDriveFile } from "./google";
 import { isReady, setRowStatus } from "./autopilot";
+import { deleteClip, getClip, hasClip, putClip } from "./clip-store";
 
 export type Job = { itemId: string; title: string; phase: "preparing" | "uploading" | "thumbnail"; progress: number };
 
@@ -63,8 +64,16 @@ type UploadsState = {
 
 const UploadsContext = createContext<UploadsState | null>(null);
 
-/** Files picked for direct upload, kept in memory so a failed upload can be retried this session. */
-const memoryFiles = new Map<string, { video: Blob; thumb?: Blob | null }>();
+/**
+ * Files picked for direct upload or cut in VideoCut, kept in this browser (memory + IndexedDB, see clip-store)
+ * so Ready to Post clips survive a reload and a failed upload can be retried.
+ */
+const memoryFiles = {
+  has: (id: string) => hasClip(id),
+  get: (id: string) => getClip(id),
+  set: (id: string, files: { video: Blob; thumb?: Blob | null }) => putClip(id, files),
+  delete: (id: string) => deleteClip(id),
+};
 
 /** Errors after which the rest of a batch can't succeed either. */
 const FATAL = /quota|upload limit|session expired|offline|blocked the google popup|window was closed/i;
@@ -311,3 +320,4 @@ export function useUploads() {
 export const hasMemoryFile = (id: string) => memoryFiles.has(id);
 export const rememberMemoryFile = (id: string, video: Blob, thumb?: Blob | null) => memoryFiles.set(id, { video, thumb });
 export const getMemoryFile = (id: string) => memoryFiles.get(id);
+export const forgetMemoryFile = (id: string) => memoryFiles.delete(id);

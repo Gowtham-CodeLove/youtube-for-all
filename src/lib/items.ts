@@ -13,6 +13,7 @@ import {
 import { db } from "./firebase";
 import { settle } from "./demo";
 import type { Privacy } from "./settings";
+import { deleteClip } from "./clip-store";
 
 export type ItemKind = "video" | "short";
 /**
@@ -54,6 +55,8 @@ export type Item = {
   createdAt: number;
   updatedAt: number;
   uploadedAt: number | null;
+  /** Length of the clip in seconds, when known (set by the Clip Studio). */
+  durationSec?: number | null;
 };
 
 const itemsCol = (uid: string) => collection(db, "users", uid, "items");
@@ -90,6 +93,8 @@ export function patchItem(uid: string, id: string, patch: Partial<Item>) {
 }
 
 export function removeItem(uid: string, id: string) {
+  // Its video file kept in this browser goes too.
+  deleteClip(id);
   return settle(deleteDoc(doc(itemsCol(uid), id)));
 }
 
