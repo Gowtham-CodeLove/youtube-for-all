@@ -19,6 +19,22 @@
         {
           "h2": "Built for Shorts creators and long-form channels",
           "p": "Schedule YouTube Shorts and normal long videos in the same queue. Bulk upload a month of content in one sitting, let the scheduler space it out, and spend your time making the next batch instead of logging in every day to hit publish."
+        },
+        {
+          "h2": "A free YouTube scheduler: schedule YouTube videos free",
+          "p": "UTubeFlow works as a free YouTube scheduler. Instead of setting a publish time on every video in YouTube Studio, you choose daily time slots once and UTubeFlow fills them from your queue in order. You can see what goes out on which day and pause Autopilot whenever you want. There is no paid plan and no limit set by UTubeFlow; only YouTube's own daily upload quota applies."
+        },
+        {
+          "h2": "YouTube Shorts scheduler",
+          "p": "Shorts creators often post once or twice a day, every day. With UTubeFlow as your YouTube Shorts scheduler you add a week or a month of vertical clips at once, give each one its title and tags, and Autopilot posts one on each slot. Video Cut and the AI Video Maker run right inside UTubeFlow, so you can cut or make a clip and add it to the queue in the same place."
+        },
+        {
+          "h2": "Bulk upload YouTube videos and auto upload them on time",
+          "p": "Bulk upload YouTube videos by dropping many files into UTubeFlow in one go — they are saved to your own Google Drive, not to our servers. YouTube auto upload then happens on each video's time slot: Autopilot sends it to your channel with the title, description, tags and privacy you set, so nothing has to stay open on your computer."
+        },
+        {
+          "h2": "What is UTubeFlow?",
+          "p": "UTubeFlow is the free YouTube automation tool from CodeLove, built by Gowtham, an independent developer in India. It sits next to the other free CodeLove tools for creators — Video Cut, the AI Video Maker, Video to GIF and Video to Images — and is free to use with any YouTube channel."
         }
       ]
     },
